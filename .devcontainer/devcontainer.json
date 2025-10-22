@@ -1,0 +1,14 @@
+// https://containers.dev/implementors/json_reference/
+{
+	"name": "yancy",
+	"build": {
+		"dockerfile": "../Containerfile.dev"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer"
+			]
+		}
+	}
+}

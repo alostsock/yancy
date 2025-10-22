@@ -1,0 +1,14 @@
+Submodule external/LibRaw contains modified content
+diff --git a/external/LibRaw/mkdist.sh b/external/LibRaw/mkdist.sh
+index 247ab16a..067cb2e8 100755
+--- a/external/LibRaw/mkdist.sh
++++ b/external/LibRaw/mkdist.sh
+@@ -7,7 +7,7 @@ else
+     autoreconf --install
+     mkdir dcraw
+     cd dcraw
+-    wget https://www.dechifro.org/dcraw/dcraw.c
++    wget https://dechifro.org/dcraw/dcraw.c
+     cd ..
+     rm -f clist2c.pl clist2html.pl
+     rm -f Makefile.devel 

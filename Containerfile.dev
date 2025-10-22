@@ -1,0 +1,21 @@
+FROM rust:1.90-bookworm
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    gnupg \
+    software-properties-common \
+    build-essential \
+    libjpeg62-turbo
+
+WORKDIR /yancy
+
+# Compile LibRaw to /libraw
+COPY external/ external/
+RUN ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so.62 /usr/lib/x86_64-linux-gnu/libjpeg.so.8
+RUN git apply external/libraw_patch.diff && \
+    cd external/LibRaw && \
+    ./mkdist.sh && \
+    ./configure --enable-zlib --enable-jpeg --disable-examples && \
+    make install -lraw_r
