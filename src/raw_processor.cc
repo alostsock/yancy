@@ -11,7 +11,7 @@ RawProcessor::~RawProcessor() {
     }
 }
 
-void RawProcessor::open_and_process(rust::String path) {
+void RawProcessor::open_and_process(rust::String path, bool half_size) {
     if (image) {
         LibRaw::dcraw_clear_mem(image);
         image = nullptr;
@@ -23,6 +23,7 @@ void RawProcessor::open_and_process(rust::String path) {
     OUT.gamm[0] = 1/2.222;
     OUT.gamm[1] = 4.5;
     OUT.use_camera_wb = 1;
+    OUT.half_size = half_size;
 
     int ret = processor.open_file(path.c_str());
     if (ret != LIBRAW_SUCCESS) {

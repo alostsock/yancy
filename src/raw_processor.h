@@ -14,7 +14,7 @@ public:
     RawProcessor();
     ~RawProcessor();
 
-    void open_and_process(rust::String path);
+    void open_and_process(rust::String path, bool half_size);
     uint16_t get_width() const;
     uint16_t get_height() const;
     uint16_t get_bits() const;

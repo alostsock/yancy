@@ -1,5 +1,5 @@
 use clap::Parser;
-use yancy::raw_processor;
+use yancy::{io, raw_processor, conversion};
 
 /// Yet Another Negative Conversion thingY
 #[derive(Parser, Debug)]
@@ -7,34 +7,42 @@ use yancy::raw_processor;
 struct Args {
     /// Path of the file to convert
     #[arg(short, long)]
-    path: String,
+    file: String,
+
+    /// Scales images to half their width and height
+    #[arg(short = 's', long, default_value_t = false)]
+    half_size: bool,
+
+    #[arg(short, long, default_value_t = false)]
+    debug: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    println!("Converting file {}...", args.path);
+    println!("Converting file {}...", args.file);
 
-    // Load the RAW file
-    match raw_processor::load_raw_image(&args.path) {
-        Ok(image) => {
-            println!(
-                "Successfully loaded RAW image: {}x{} pixels",
-                image.width(),
-                image.height()
-            );
-            // TODO: Apply negative inversion and save the result
-            // For now, just save the processed image
-            let output_path = format!("{}.png", args.path);
-            if let Err(e) = image.save(&output_path) {
-                eprintln!("Failed to save image: {}", e);
-                std::process::exit(1);
-            }
-            println!("Saved to {}", output_path);
-        }
+    let image = match raw_processor::load_raw_image(&args.file, args.half_size) {
+        Ok(image) => image,
         Err(e) => {
             eprintln!("Failed to load RAW image: {}", e);
             std::process::exit(1);
         }
+    };
+
+    if args.debug {
+        println!(
+            "Successfully loaded RAW image: {}x{} pixels",
+            image.width(),
+            image.height()
+        );
+
+        io::save_image(&args.file, "original", "jpeg", image.clone());
     }
+
+    let debug_file_path = if args.debug { Some(args.file.as_str()) } else { None };
+
+    let converted = conversion::convert(&image, debug_file_path);
+
+    // io::save_image(&args.file, "positive", "jpeg", converted);
 }

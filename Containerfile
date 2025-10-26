@@ -6,20 +6,20 @@ RUN apt-get update && apt-get install -y \
     git \
     gnupg \
     software-properties-common \
-    build-essential
+    build-essential \
+    libjpeg62-turbo
 
 WORKDIR /yancy
 
-# Compile LibRaw to /libraw
+# Compile LibRaw
 COPY external/ external/
+RUN ln -s /usr/lib/x86_64-linux-gnu/libjpeg.so.62 /usr/lib/x86_64-linux-gnu/libjpeg.so.8
 RUN git apply external/libraw_patch.diff && \
     cd external/LibRaw && \
     ./mkdist.sh && \
-    ./configure --prefix=/libraw --disable-examples && \
+    ./configure --enable-zlib --enable-jpeg --disable-examples && \
     make install -lraw_r
 
 COPY . .
 
-RUN cargo install --path .
-
-ENTRYPOINT ["yancy"]
+ENTRYPOINT "cargo run --release yancy"
