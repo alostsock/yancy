@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+use std::u16;
+
 use image::imageops::{self, contrast};
-use image::{DynamicImage, ImageBuffer, Luma, Rgb};
+use image::{DynamicImage, GrayImage, ImageBuffer, Luma, Pixel, Rgb};
 use imageproc::contours::find_contours;
-use imageproc::drawing::draw_line_segment_mut;
+use imageproc::drawing::{draw_filled_circle_mut, draw_line_segment_mut};
 use imageproc::edges::canny;
 use imageproc::filter::median_filter;
 use imageproc::geometry::min_area_rect;
@@ -14,19 +17,75 @@ use crate::processing::normalize_histogram_mut;
 const BLACK_BORDER_THRESHOLD: u8 = 20;
 const WHITE_LIGHT_THRESHOLD: u8 = 240;
 
+type InputImage = ImageBuffer<Rgb<u16>, Vec<u16>>;
+
 pub fn convert(
-    image: &ImageBuffer<Rgb<u16>, Vec<u16>>,
+    original: &InputImage,
     debug_file_path: Option<&str>,
 ) -> ImageBuffer<Rgb<u16>, Vec<u16>> {
-    let mut img: DynamicImage = image.clone().into();
+    let Border {
+        bounds: (min_x, min_y, max_x, max_y),
+        points: border_points,
+    } = identify_border(&original, debug_file_path);
 
-    if image.width() > 500 || image.height() > 500 {
+    if let Some(path) = debug_file_path {
+        let mut img = original.clone();
+
+        let points = vec![
+            (min_x as f32, min_y as f32),
+            (max_x as f32, min_y as f32),
+            (max_x as f32, max_y as f32),
+            (min_x as f32, max_y as f32),
+            (min_x as f32, min_y as f32),
+        ];
+        for i in 1..points.len() {
+            let p0 = points[i - 1];
+            let p1 = points[i];
+            draw_line_segment_mut(&mut img, p0, p1, Rgb([0, u16::MAX, u16::MAX]));
+        }
+
+        for &(x, y) in border_points.iter() {
+            draw_filled_circle_mut(&mut img, (x as i32, y as i32), 10, Rgb([u16::MAX, 0, 0]));
+        }
+
+        io::save_image(path, "border", "jpeg", img);
+    }
+
+    let border_colors: Vec<&Rgb<u16>> = border_points
+        .iter()
+        .map(|&(x, y)| original.get_pixel(x, y))
+        .collect();
+
+    let avg_border_color = Rgb([
+        rms(border_colors.iter().map(|c| c.0[0]).collect()),
+        rms(border_colors.iter().map(|c| c.0[1]).collect()),
+        rms(border_colors.iter().map(|c| c.0[2]).collect()),
+    ]);
+
+    dbg!([
+        (255_f32 * avg_border_color.0[0] as f32 / u16::MAX as f32) as u8,
+        (255_f32 * avg_border_color.0[1] as f32 / u16::MAX as f32) as u8,
+        (255_f32 * avg_border_color.0[2] as f32 / u16::MAX as f32) as u8,
+    ]);
+
+    white_balance(original, avg_border_color)
+}
+
+struct Border {
+    bounds: (u32, u32, u32, u32),
+    points: Vec<(u32, u32)>,
+}
+
+fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Border {
+    let mut img: DynamicImage = original.clone().into();
+
+    if original.width() > 500 || original.height() > 500 {
         // use a smaller image for faster processing
         img = img.resize(500, 500, imageops::FilterType::Triangle);
     }
 
     // convert to grayscale
-    let mut img = img.to_luma8();
+    let mut img: GrayImage = img.to_luma8();
 
     // 1. normalize histogram for more consistent black/white values
     normalize_histogram_mut(&mut img);
@@ -59,14 +118,14 @@ pub fn convert(
     });
 
     // 5. remove any specks of black remaining from step (2)
-    img = median_filter(&img, 1, 1);
+    let borderless = median_filter(&img, 1, 1);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "borderless", "jpeg", img.clone());
+        io::save_image(path, "borderless", "jpeg", borderless.clone());
     }
 
     // 6. find edges
-    img = contrast(&img, 50.0);
+    img = contrast(&borderless, 50.0);
     img = canny(&img, 3.0, 100.0);
 
     if let Some(path) = debug_file_path {
@@ -78,7 +137,7 @@ pub fn convert(
     let points: Vec<Point<u32>> = contours
         .into_iter()
         .filter_map(|contour| {
-            if contour.points.len() > 40 {
+            if contour.points.len() > 50 {
                 Some(contour.points)
             } else {
                 None
@@ -89,25 +148,90 @@ pub fn convert(
 
     let corners = min_area_rect(&points);
 
-    let resized_width = img.width() as f32;
-    let resized_height = img.height() as f32;
+    let min_x = corners.map(|c| c.x).into_iter().min().unwrap();
+    let min_y = corners.map(|c| c.y).into_iter().min().unwrap();
+    let max_x = corners.map(|c| c.x).into_iter().max().unwrap();
+    let max_y = corners.map(|c| c.y).into_iter().max().unwrap();
 
-    if let Some(path) = debug_file_path {
-        let mut points = corners.clone().to_vec();
-        points.push(points[0]);
+    let points = identify_border_points(min_x, min_y, max_x, max_y, &borderless);
 
-        let mut img = image.clone();
-        for i in 1..points.len() {
-            let x0 = image.width() as f32 * points[i - 1].x as f32 / resized_width;
-            let y0 = image.height() as f32 * points[i - 1].y as f32 / resized_height;
-            let x1 = image.width() as f32 * points[i].x as f32 / resized_width;
-            let y1 = image.height() as f32 * points[i].y as f32 / resized_height;
+    let scale_x = |x: u32| (x as f32 * original.width() as f32 / img.width() as f32) as u32;
+    let scale_y = |y: u32| (y as f32 * original.height() as f32 / img.height() as f32) as u32;
 
-            draw_line_segment_mut(&mut img, (x0, y0), (x1, y1), Rgb([0, u16::MAX, u16::MAX]));
+    Border {
+        bounds: (
+            scale_x(min_x),
+            scale_y(min_y),
+            scale_x(max_x),
+            scale_y(max_y),
+        ),
+        points: points
+            .into_iter()
+            .map(|(x, y)| (scale_x(x), scale_y(y)))
+            .collect(),
+    }
+}
+
+fn identify_border_points(
+    min_x: u32,
+    min_y: u32,
+    max_x: u32,
+    max_y: u32,
+    img: &GrayImage,
+) -> Vec<(u32, u32)> {
+    let mut pixel_positions: HashMap<u8, Vec<(u32, u32)>> = HashMap::new();
+    let mut hist = vec![0u8; 256];
+
+    let gap_x = (img.width() as f32 * 0.01) as u32;
+    let gap_y = (img.height() as f32 * 0.01) as u32;
+
+    let mut i = 0;
+    for &p in img.iter() {
+        let x = i % img.width();
+        let y = i / img.width();
+        if (x < min_x + gap_x || x > max_x - gap_x)
+            && (y < min_y + gap_y || y > max_y - gap_y)
+            && p != 255
+        {
+            hist[p as usize] += 1;
+            pixel_positions
+                .entry(p)
+                .and_modify(|positions| positions.push((x, y)))
+                .or_insert(vec![(x, y)]);
         }
-
-        io::save_image(path, "bounds", "jpeg", img);
+        i += 1;
     }
 
-    image.clone()
+    let border_value = hist
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.cmp(b))
+        .map(|(i, _)| i)
+        .unwrap() as u8;
+
+    pixel_positions.remove(&border_value).unwrap()
+}
+
+/// root mean square
+fn rms(values: Vec<u16>) -> u16 {
+    let sum: usize = values.iter().map(|&v| (v as usize).pow(2)).sum();
+    (sum as f32 / values.len() as f32).sqrt() as u16
+}
+
+/// Slight modification of this approach:
+/// https://stackoverflow.com/questions/54470148/white-balance-a-photo-from-a-known-point
+fn white_balance(img: &InputImage, white_color: Rgb<u16>) -> InputImage {
+    let lum = rms(vec![white_color.0[0], white_color.0[1], white_color.0[2]]) as f32;
+
+    let ratio_r = lum / white_color.0[0] as f32;
+    let ratio_g = lum / white_color.0[1] as f32;
+    let ratio_b = lum / white_color.0[2] as f32;
+
+    map_colors(img, |p| {
+        Rgb([
+            (p.0[0] as f32 * ratio_r) as u16,
+            (p.0[1] as f32 * ratio_g) as u16,
+            (p.0[2] as f32 * ratio_b) as u16,
+        ])
+    })
 }

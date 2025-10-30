@@ -37,12 +37,12 @@ fn main() {
             image.height()
         );
 
-        io::save_image(&args.file, "original", "jpeg", image.clone());
+        io::save_image(&args.file, "original", "tiff", image.clone());
     }
 
     let debug_file_path = if args.debug { Some(args.file.as_str()) } else { None };
 
     let converted = conversion::convert(&image, debug_file_path);
 
-    // io::save_image(&args.file, "positive", "jpeg", converted);
+    io::save_image(&args.file, "positive", "tiff", converted);
 }

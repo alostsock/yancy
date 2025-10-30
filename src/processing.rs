@@ -2,9 +2,9 @@ use image::GrayImage;
 use imageproc::stats::cumulative_histogram;
 use rayon::prelude::*;
 
-// Unfortunately, imageproc's `equalize_histogram_mut` doesn't preserve black
-// or white levels. Here, we keep track of the `min` CDF value so that pixels
-// with values 0 and 255 remain 0 and 255, respectively.
+/// Unfortunately, imageproc's `equalize_histogram_mut` doesn't preserve black
+/// or white levels. Here, we keep track of the `min` CDF value so that pixels
+/// with values 0 and 255 remain 0 and 255, respectively.
 pub fn normalize_histogram_mut(image: &mut GrayImage) {
     let hist = cumulative_histogram(image).channels[0];
     let min = hist[0] as f32;
