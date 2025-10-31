@@ -19,11 +19,14 @@ void RawProcessor::open_and_process(rust::String path, bool half_size) {
 
     #define OUT processor.imgdata.params
 
-    OUT.output_bps = 16;
-    OUT.gamm[0] = 1/2.222;
-    OUT.gamm[1] = 4.5;
-    OUT.use_camera_wb = 1;
     OUT.half_size = half_size;
+    OUT.output_bps = 16;
+    OUT.gamm[0] = 1/2.4;
+    OUT.gamm[1] = 12.92;
+    OUT.use_camera_wb = 1;
+    OUT.use_camera_matrix = 1;
+    OUT.no_auto_bright = 1;
+    OUT.adjust_maximum_thr = 0.6;
 
     int ret = processor.open_file(path.c_str());
     if (ret != LIBRAW_SUCCESS) {

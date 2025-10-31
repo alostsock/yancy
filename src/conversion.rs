@@ -62,12 +62,6 @@ pub fn convert(
         rms(border_colors.iter().map(|c| c.0[2]).collect()),
     ]);
 
-    dbg!([
-        (255_f32 * avg_border_color.0[0] as f32 / u16::MAX as f32) as u8,
-        (255_f32 * avg_border_color.0[1] as f32 / u16::MAX as f32) as u8,
-        (255_f32 * avg_border_color.0[2] as f32 / u16::MAX as f32) as u8,
-    ]);
-
     white_balance(original, avg_border_color)
 }
 
@@ -218,10 +212,15 @@ fn rms(values: Vec<u16>) -> u16 {
     (sum as f32 / values.len() as f32).sqrt() as u16
 }
 
-/// Slight modification of this approach:
+/// Combines these approaches:
 /// https://stackoverflow.com/questions/54470148/white-balance-a-photo-from-a-known-point
+/// https://stackoverflow.com/questions/596216/formula-to-determine-perceived-brightness-of-rgb-color
 fn white_balance(img: &InputImage, white_color: Rgb<u16>) -> InputImage {
-    let lum = rms(vec![white_color.0[0], white_color.0[1], white_color.0[2]]) as f32;
+    let lum = rms(vec![
+        (0.299_f32.sqrt() * white_color.0[0] as f32) as u16,
+        (0.587_f32.sqrt() * white_color.0[1] as f32) as u16,
+        (0.114_f32.sqrt() * white_color.0[2] as f32) as u16
+    ]) as f32;
 
     let ratio_r = lum / white_color.0[0] as f32;
     let ratio_g = lum / white_color.0[1] as f32;

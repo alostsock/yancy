@@ -12,3 +12,28 @@ index 247ab16a..067cb2e8 100755
      cd ..
      rm -f clist2c.pl clist2html.pl
      rm -f Makefile.devel 
+diff --git a/external/LibRaw/src/tables/cameralist.cpp b/external/LibRaw/src/tables/cameralist.cpp
+index 5f9020d1..890fcb4e 100644
+--- a/external/LibRaw/src/tables/cameralist.cpp
++++ b/external/LibRaw/src/tables/cameralist.cpp
+@@ -842,6 +842,7 @@ static const char *static_camera_list[] = {
+ 	"Olympus XZ-2",
+ 	"Olympus XZ-10",
+ 	"OM Digital Solutions OM-1",
++	"OM Digital Solutions OM-3",
+ 	"OmniVision 4688",
+ 	"OmniVision OV5647",
+ 	"OmniVision OV5648",
+diff --git a/external/LibRaw/src/tables/colordata.cpp b/external/LibRaw/src/tables/colordata.cpp
+index fc9f100f..145986ae 100644
+--- a/external/LibRaw/src/tables/colordata.cpp
++++ b/external/LibRaw/src/tables/colordata.cpp
+@@ -1156,6 +1156,8 @@ int LibRaw::adobe_coeff(unsigned make_idx, const char *t_model,
+ 
+ 	  { LIBRAW_CAMERAMAKER_Olympus, "OM-1", 0, 0,
+ 		{ 9488, -3984, -714, -2887, 10945, 2229, -137, 960, 5786 } },
++	  { LIBRAW_CAMERAMAKER_Olympus, "OM-3", 0, 0,
++		  { 9090, -3591, -756, -3252, 11396, 2109, -318, 1059, 5606 } },
+ 
+ 	{ LIBRAW_CAMERAMAKER_OmniVison, "", 16, 0x3ff,
+       { 12782,-4059,-379,-478,9066,1413,1340,1513,5176 } }, /* DJC */
