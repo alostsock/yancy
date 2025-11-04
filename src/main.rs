@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use clap::{Args, Parser};
+use clap::{Args, Parser, ValueEnum};
 use yancy::{conversion, io, raw_processor};
 
 /// yet another negative conversion thingy
@@ -11,24 +11,25 @@ struct Cli {
     input: Input,
 
     /// Output file format
-    #[arg(long, default_value = "tiff")]
-    output_format: String,
+    #[arg(long, default_value_t = OutputFormat::Tiff)]
+    output_format: OutputFormat,
 
     /// Output file suffix
     #[arg(long, default_value = "positive")]
     output_suffix: String,
 
-    /// Expected aspect ratio as width/height. Defaults to 1.5 (3:2 landscape), or 0.7083 (17:24 portrait) for half frame
-    #[arg(long)]
-    aspect_ratio: Option<f32>,
-
-    /// Additional crop after border removal, as a percentage of the original image's width and height
-    #[arg(short = 'c', long, default_value_t = 0.01)]
-    crop_percentage: f32,
-
     /// Splits input file(s) in half vertically before processing
     #[arg(long, default_value_t = false)]
     half_frame: bool,
+
+    /// The expected aspect ratio as width/height. Defaults to 1.5 (3:2 landscape), or 0.7083 (17:24 portrait) for half frame
+    #[arg(long)]
+    aspect_ratio: Option<f32>,
+
+    /// Amount of additional crop after border removal, as a percentage of the original image's width and height
+    #[arg(short = 'c', long, default_value_t = 0.01)]
+    crop_percentage: f32,
+
 
     /// Saves intermediate images during processing
     #[arg(long, default_value_t = false)]
@@ -45,6 +46,25 @@ struct Input {
     /// Directory of files to convert
     #[arg(short = 'd', long)]
     dir: Option<String>,
+}
+
+#[derive(Clone, ValueEnum, Debug)]
+enum OutputFormat {
+    Png,
+    Jpeg,
+    Webp,
+    Tiff,
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Png => write!(f, "png"),
+            Self::Jpeg => write!(f, "jpeg"),
+            Self::Webp => write!(f, "webp"),
+            Self::Tiff => write!(f, "tiff"),
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -103,7 +123,12 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
     if !args.half_frame {
         let debug_file_path = if args.debug { Some(file) } else { None };
         let converted = conversion::convert(&image, 1.5, args.crop_percentage, debug_file_path)?;
-        io::save_image(&file, &args.output_suffix, &args.output_format, converted)?;
+        io::save_image(
+            &file,
+            &args.output_suffix,
+            &args.output_format.to_string(),
+            converted,
+        )?;
     } else {
         let halves = conversion::split_image(image);
         for (image, half_suffix) in halves.into_iter().zip('a'..='b') {
@@ -118,7 +143,7 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
             io::save_image(
                 &file_half,
                 &args.output_suffix,
-                &args.output_format,
+                &args.output_format.to_string(),
                 converted,
             )?;
         }
