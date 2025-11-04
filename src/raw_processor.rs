@@ -7,7 +7,7 @@ mod ffi {
 
         fn new_raw_processor() -> UniquePtr<RawProcessor>;
 
-        fn open_and_process(self: Pin<&mut Self>, path: String, half_size: bool);
+        fn open_and_process(self: Pin<&mut Self>, path: String);
         fn get_width(&self) -> u16;
         fn get_height(&self) -> u16;
         fn get_bits(&self) -> u16;
@@ -21,7 +21,7 @@ mod ffi {
 use std::path::Path;
 use image::{ImageBuffer, Rgb};
 
-pub fn load_raw_image<P: AsRef<Path>>(path: P, half_size: bool) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Box<dyn std::error::Error>> {
+pub fn load_raw_image<P: AsRef<Path>>(path: P) -> Result<ImageBuffer<Rgb<u16>, Vec<u16>>, Box<dyn std::error::Error>> {
     let path_str = path
         .as_ref()
         .to_str()
@@ -29,7 +29,7 @@ pub fn load_raw_image<P: AsRef<Path>>(path: P, half_size: bool) -> Result<ImageB
 
     let mut processor = ffi::new_raw_processor();
 
-    processor.pin_mut().open_and_process(path_str.to_string(), half_size);
+    processor.pin_mut().open_and_process(path_str.to_string());
 
     let width = processor.get_width();
     let height = processor.get_height();

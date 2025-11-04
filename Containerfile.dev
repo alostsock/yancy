@@ -19,3 +19,5 @@ RUN git apply external/libraw_patch.diff && \
     ./mkdist.sh && \
     ./configure --enable-zlib --enable-jpeg --disable-examples && \
     make install -lraw_r
+
+RUN rustup component add rustfmt

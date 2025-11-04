@@ -11,7 +11,7 @@ RawProcessor::~RawProcessor() {
     }
 }
 
-void RawProcessor::open_and_process(rust::String path, bool half_size) {
+void RawProcessor::open_and_process(rust::String path) {
     if (image) {
         LibRaw::dcraw_clear_mem(image);
         image = nullptr;
@@ -19,7 +19,6 @@ void RawProcessor::open_and_process(rust::String path, bool half_size) {
 
     #define OUT processor.imgdata.params
 
-    OUT.half_size = half_size;
     OUT.output_bps = 16;
     OUT.gamm[0] = 1/2.4;
     OUT.gamm[1] = 12.92;

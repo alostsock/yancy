@@ -1,6 +1,6 @@
 extern crate openmp_sys;
 
-pub mod raw_processor;
 pub mod conversion;
+pub mod histogram;
 pub mod io;
-pub mod processing;
+pub mod raw_processor;

@@ -1,32 +1,32 @@
 use std::collections::HashMap;
 use std::u16;
 
-use image::imageops::{self, contrast};
-use image::{DynamicImage, GrayImage, ImageBuffer, Luma, Pixel, Rgb};
+use image::imageops::{self, contrast, crop_imm};
+use image::{DynamicImage, GrayImage, ImageBuffer, ImageError, Luma, Rgb};
 use imageproc::contours::find_contours;
 use imageproc::drawing::{draw_filled_circle_mut, draw_line_segment_mut};
 use imageproc::edges::canny;
 use imageproc::filter::median_filter;
 use imageproc::geometry::min_area_rect;
-use imageproc::map::map_colors;
+use imageproc::map::{map_colors, map_colors_mut};
 use imageproc::point::Point;
 
+use crate::histogram::{normalize_histogram_mut, stretch_channels_mut};
 use crate::io;
-use crate::processing::normalize_histogram_mut;
 
 const BLACK_BORDER_THRESHOLD: u8 = 20;
 const WHITE_LIGHT_THRESHOLD: u8 = 240;
 
-type InputImage = ImageBuffer<Rgb<u16>, Vec<u16>>;
+pub type InputImage = ImageBuffer<Rgb<u16>, Vec<u16>>;
 
 pub fn convert(
     original: &InputImage,
     debug_file_path: Option<&str>,
-) -> ImageBuffer<Rgb<u16>, Vec<u16>> {
+) -> Result<InputImage, ImageError> {
     let Border {
         bounds: (min_x, min_y, max_x, max_y),
         points: border_points,
-    } = identify_border(&original, debug_file_path);
+    } = identify_border(&original, debug_file_path)?;
 
     if let Some(path) = debug_file_path {
         let mut img = original.clone();
@@ -48,7 +48,7 @@ pub fn convert(
             draw_filled_circle_mut(&mut img, (x as i32, y as i32), 10, Rgb([u16::MAX, 0, 0]));
         }
 
-        io::save_image(path, "border", "jpeg", img);
+        io::save_image(path, "border", "jpeg", img)?;
     }
 
     let border_colors: Vec<&Rgb<u16>> = border_points
@@ -62,7 +62,19 @@ pub fn convert(
         rms(border_colors.iter().map(|c| c.0[2]).collect()),
     ]);
 
-    white_balance(original, avg_border_color)
+    let mut output = crop_border(original, min_x, min_y, max_x, max_y);
+
+    white_balance(&mut output, avg_border_color);
+
+    invert_mut(&mut output);
+
+    if let Some(path) = debug_file_path {
+        io::save_image(path, "inverted", "jpeg", output.clone())?;
+    }
+
+    stretch_channels_mut(&mut output, 0.005);
+
+    Ok(output)
 }
 
 struct Border {
@@ -70,7 +82,10 @@ struct Border {
     points: Vec<(u32, u32)>,
 }
 
-fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Border {
+fn identify_border(
+    original: &InputImage,
+    debug_file_path: Option<&str>,
+) -> Result<Border, ImageError> {
     let mut img: DynamicImage = original.clone().into();
 
     if original.width() > 500 || original.height() > 500 {
@@ -85,7 +100,7 @@ fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Bord
     normalize_histogram_mut(&mut img);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "grayscale", "jpeg", img.clone());
+        io::save_image(path, "grayscale", "jpeg", img.clone())?;
     }
 
     // 2. zero out any black borders or light from sprocket holes
@@ -115,7 +130,7 @@ fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Bord
     let borderless = median_filter(&img, 1, 1);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "borderless", "jpeg", borderless.clone());
+        io::save_image(path, "borderless", "jpeg", borderless.clone())?;
     }
 
     // 6. find edges
@@ -123,7 +138,7 @@ fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Bord
     img = canny(&img, 3.0, 100.0);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "edges", "jpeg", img.clone());
+        io::save_image(path, "edges", "jpeg", img.clone())?;
     }
 
     // 7. find contours
@@ -152,7 +167,7 @@ fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Bord
     let scale_x = |x: u32| (x as f32 * original.width() as f32 / img.width() as f32) as u32;
     let scale_y = |y: u32| (y as f32 * original.height() as f32 / img.height() as f32) as u32;
 
-    Border {
+    Ok(Border {
         bounds: (
             scale_x(min_x),
             scale_y(min_y),
@@ -163,7 +178,7 @@ fn identify_border(original: &InputImage, debug_file_path: Option<&str>) -> Bord
             .into_iter()
             .map(|(x, y)| (scale_x(x), scale_y(y)))
             .collect(),
-    }
+    })
 }
 
 fn identify_border_points(
@@ -212,25 +227,39 @@ fn rms(values: Vec<u16>) -> u16 {
     (sum as f32 / values.len() as f32).sqrt() as u16
 }
 
+fn crop_border(img: &InputImage, min_x: u32, min_y: u32, max_x: u32, max_y: u32) -> InputImage {
+    crop_imm(img, min_x, min_y, max_x - min_x, max_y - min_y).to_image()
+}
+
 /// Combines these approaches:
 /// https://stackoverflow.com/questions/54470148/white-balance-a-photo-from-a-known-point
 /// https://stackoverflow.com/questions/596216/formula-to-determine-perceived-brightness-of-rgb-color
-fn white_balance(img: &InputImage, white_color: Rgb<u16>) -> InputImage {
+fn white_balance(img: &mut InputImage, white_color: Rgb<u16>) {
     let lum = rms(vec![
         (0.299_f32.sqrt() * white_color.0[0] as f32) as u16,
         (0.587_f32.sqrt() * white_color.0[1] as f32) as u16,
-        (0.114_f32.sqrt() * white_color.0[2] as f32) as u16
+        (0.114_f32.sqrt() * white_color.0[2] as f32) as u16,
     ]) as f32;
 
     let ratio_r = lum / white_color.0[0] as f32;
     let ratio_g = lum / white_color.0[1] as f32;
     let ratio_b = lum / white_color.0[2] as f32;
 
-    map_colors(img, |p| {
+    map_colors_mut(img, |p| {
         Rgb([
             (p.0[0] as f32 * ratio_r) as u16,
             (p.0[1] as f32 * ratio_g) as u16,
             (p.0[2] as f32 * ratio_b) as u16,
         ])
     })
+}
+
+fn invert_mut(img: &mut InputImage) {
+    map_colors_mut(img, |p| {
+        Rgb([
+            (u16::MAX - p.0[0]),
+            (u16::MAX - p.0[1]),
+            (u16::MAX - p.0[2]),
+        ])
+    });
 }
