@@ -18,9 +18,8 @@ struct Cli {
     #[arg(long, default_value = "positive")]
     output_suffix: String,
 
-    /// number of images to process in parallel
-    #[arg(short = 'n', long, default_value_t = 1)]
-    num_threads: usize,
+    #[arg(long, default_value_t = false)]
+    half_frame: bool,
 
     /// saves intermediate images during processing
     #[arg(long, default_value_t = false)]
@@ -94,9 +93,17 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
 
     let debug_file_path = if args.debug { Some(file) } else { None };
 
-    let converted = conversion::convert(&image, debug_file_path)?;
-
-    io::save_image(&file, &args.output_suffix, &args.output_format, converted)?;
+    if !args.half_frame {
+        let converted = conversion::convert(&image, debug_file_path)?;
+        io::save_image(&file, &args.output_suffix, &args.output_format, converted)?;
+    } else {
+        let halves = conversion::split_image(image);
+        for (image, half_suffix) in halves.into_iter().zip('a'..='b') {
+            let converted = conversion::convert(&image, debug_file_path)?;
+            let suffix = format!("{}.{}", args.output_suffix, half_suffix);
+            io::save_image(&file, &suffix, &args.output_format, converted)?;
+        }
+    }
 
     Ok(())
 }

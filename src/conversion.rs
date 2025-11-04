@@ -263,3 +263,10 @@ fn invert_mut(img: &mut InputImage) {
         ])
     });
 }
+
+pub fn split_image(img: InputImage) -> [InputImage; 2] {
+    [
+        crop_imm(&img, 0, 0, img.width() / 2, img.height()).to_image(),
+        crop_imm(&img, img.width() / 2, 0, img.width() / 2, img.height()).to_image(),
+    ]
+}

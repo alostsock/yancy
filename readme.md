@@ -4,11 +4,12 @@
 
 Takes camera RAW images of film negatives, and converts them to positives.
 Intended to be used when scanning color negatives with a digital camera.
-Accepts multiple files (-f) or a single directory (-d) as input.
+Accepts multiple files (`-f`) or a single directory (`-d`) as input.
 
 Executes the following steps for each image input:
 
 1. Load the RAW image file (assumes sRGB color space, landscape orientation)
+  a. Crop the image into halves if `--half-frame` is enabled
 2. Determine edges of the film border, and color of the film backing
 3. Crop the image
 4. White balance the image using the film backing color

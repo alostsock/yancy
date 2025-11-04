@@ -1,0 +1,6 @@
+#! /bin/bash
+rm examples/*.jpeg
+rm examples/*.png
+rm examples/*.tiff
+cargo run --release -- --debug --output-format jpeg -d examples
+cargo run --release -- --debug --output-format jpeg --half-frame -f examples/P9261242.ORF examples/P9301342.ORF
