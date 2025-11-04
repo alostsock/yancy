@@ -19,14 +19,26 @@ const WHITE_LIGHT_THRESHOLD: u8 = 240;
 
 pub type InputImage = ImageBuffer<Rgb<u16>, Vec<u16>>;
 
+type Bounds = (u32, u32, u32, u32);
+
+struct Border {
+    bounds: Bounds,
+    points: Vec<(u32, u32)>,
+}
+
 pub fn convert(
     original: &InputImage,
+    aspect_ratio: f32,
+    crop_percentage: f32,
     debug_file_path: Option<&str>,
 ) -> Result<InputImage, ImageError> {
     let Border {
-        bounds: (min_x, min_y, max_x, max_y),
+        bounds,
         points: border_points,
     } = identify_border(&original, debug_file_path)?;
+
+    let (min_x, min_y, max_x, max_y) =
+        determine_crop_inset_bounds(original, bounds, aspect_ratio, crop_percentage);
 
     if let Some(path) = debug_file_path {
         let mut img = original.clone();
@@ -75,11 +87,6 @@ pub fn convert(
     stretch_channels_mut(&mut output, 0.005);
 
     Ok(output)
-}
-
-struct Border {
-    bounds: (u32, u32, u32, u32),
-    points: Vec<(u32, u32)>,
 }
 
 fn identify_border(
@@ -135,7 +142,7 @@ fn identify_border(
 
     // 6. find edges
     img = contrast(&borderless, 50.0);
-    img = canny(&img, 3.0, 100.0);
+    img = canny(&img, 1.0, 50.0);
 
     if let Some(path) = debug_file_path {
         io::save_image(path, "edges", "jpeg", img.clone())?;
@@ -269,4 +276,39 @@ pub fn split_image(img: InputImage) -> [InputImage; 2] {
         crop_imm(&img, 0, 0, img.width() / 2, img.height()).to_image(),
         crop_imm(&img, img.width() / 2, 0, img.width() / 2, img.height()).to_image(),
     ]
+}
+
+pub fn determine_crop_inset_bounds(
+    original: &InputImage,
+    (min_x, min_y, max_x, max_y): Bounds,
+    aspect_ratio: f32,
+    crop_percentage: f32,
+) -> Bounds {
+    let current_aspect_ratio = (max_x - min_x) as f32 / (max_y - min_y) as f32;
+
+    let inset_x = (original.width() as f32 * crop_percentage / 2.0) as u32;
+    let inset_y = (original.height() as f32 * crop_percentage / 2.0) as u32;
+
+    if current_aspect_ratio > aspect_ratio {
+        // current bounds are too wide. height is OK
+        let target_width = (max_y - min_y - inset_y * 2) as f32 * aspect_ratio;
+        let mid_x = (max_x - min_x) as f32 / 2.0;
+        let left = min_x + (mid_x - target_width / 2.0) as u32;
+        let right = min_x + (mid_x + target_width / 2.0) as u32;
+        (left, min_y + inset_y, right, max_y - inset_y)
+    } else if current_aspect_ratio < aspect_ratio {
+        // current bounds are too tall. width is OK
+        let target_height = (max_x - min_x - inset_x * 2) as f32 / aspect_ratio;
+        let mid_y = (max_y - min_y) as f32 / 2.0;
+        let top = min_y + (mid_y - target_height / 2.0) as u32;
+        let bottom = min_y + (mid_y + target_height / 2.0) as u32;
+        (min_x + inset_x, top, max_x - inset_x, bottom)
+    } else {
+        (
+            min_x + inset_x,
+            min_y + inset_y,
+            max_x - inset_x,
+            max_y - inset_y,
+        )
+    }
 }
