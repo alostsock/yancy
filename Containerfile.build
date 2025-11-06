@@ -22,4 +22,4 @@ RUN git apply external/libraw_patch.diff && \
 
 COPY . .
 
-ENTRYPOINT "cargo run --release yancy"
+RUN cargo build --release --target x86_64-unknown-linux-gnu
