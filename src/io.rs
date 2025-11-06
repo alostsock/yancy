@@ -21,14 +21,14 @@ where
     let output_path = format!("{}.{}.{}", path, suffix, extension);
 
     if image.save(&output_path).is_ok() {
-        println!("Saved (8-bit rgb) {}", output_path);
+        println!("Saved {}", output_path);
         return Ok(());
     }
 
     Into::<DynamicImage>::into(image)
         .to_rgb8()
         .save(&output_path)?;
-    println!("Saved {}", output_path);
+    println!("Saved (8-bit rgb) {}", output_path);
     Ok(())
 }
 
