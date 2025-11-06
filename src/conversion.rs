@@ -124,6 +124,10 @@ fn identify_border(
     // re-normalize these values, since they should be brighter now
     normalize_histogram_mut(&mut img);
 
+    if let Some(path) = debug_file_path {
+        io::save_image(path, "pre-border-removal", "jpeg", img.clone())?;
+    }
+
     // 4. change the values from step (2) to white, in preparation for edge
     // detection
     img = map_colors(&img, |p| {
@@ -199,8 +203,8 @@ fn identify_border_points(
     let mut pixel_positions: HashMap<u8, Vec<(u32, u32)>> = HashMap::new();
     let mut hist = vec![0u8; 256];
 
-    let gap_x = (img.width() as f32 * 0.01) as u32;
-    let gap_y = (img.height() as f32 * 0.01) as u32;
+    let gap_x = (img.width() as f32 * 0.05) as u32;
+    let gap_y = (img.height() as f32 * 0.05) as u32;
 
     let mut i = 0;
     for &p in img.iter() {
