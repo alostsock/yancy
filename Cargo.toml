@@ -2,6 +2,11 @@
 name = "yancy"
 version = "0.1.0"
 edition = "2024"
+authors = ["alostsock <hi@alostsock.dev>"]
+description = "Converts film negatives to positive images"
+readme = "readme.md"
+repository = "https://github.com/alostsock/yancy"
+license-file = "LICENSE"
 
 [dependencies]
 clap = { version = "4.5.50", features = ["derive"] }
