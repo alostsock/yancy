@@ -30,6 +30,7 @@ pub fn convert(
     original: &InputImage,
     aspect_ratio: f32,
     crop_percentage: f32,
+    histogram_clip_range: (f32, f32),
     debug_file_path: Option<&str>,
 ) -> Result<InputImage, ImageError> {
     let Border {
@@ -84,7 +85,7 @@ pub fn convert(
         io::save_image(path, "inverted", "jpeg", output.clone())?;
     }
 
-    stretch_channels_mut(&mut output, 0.005);
+    stretch_channels_mut(&mut output, histogram_clip_range, debug_file_path.is_some());
 
     Ok(output)
 }

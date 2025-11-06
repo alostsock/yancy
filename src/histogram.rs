@@ -1,8 +1,12 @@
+use std::io::Write;
+
 use image::GrayImage;
 use imageproc::stats::cumulative_histogram;
+use nalgebra::DVector;
 use rayon::prelude::*;
 
 use crate::conversion::InputImage;
+use crate::polyfit;
 
 /// imageproc's `equalize_histogram_mut` doesn't preserve black or white levels.
 /// Here, we keep track of the `min` CDF value so that pixels with values 0 and
@@ -39,58 +43,137 @@ pub fn histogram_rgb(image: &InputImage) -> CumulativeHistogramRgb {
     hist
 }
 
-pub fn find_cutoff_value(channel_hist: [usize; 65536], cutoff: f32) -> u16 {
-    let mut count = 0 as f32;
-    let mut current_value = 0_u16;
-    let total = channel_hist.iter().sum::<usize>() as f32;
+pub fn find_cutoff_value(
+    reverse: bool,
+    channel_hist: [usize; 65536],
+    (cutoff_min, cutoff_max): (f32, f32),
+    debug: bool,
+) -> u16 {
+    let pixels_total = channel_hist.iter().sum::<usize>() as f32;
 
-    for (value, &freq) in channel_hist.iter().enumerate() {
-        count += freq as f32;
-        current_value = value as u16;
-        if (count / total) > cutoff {
+    let hist_iter: Box<dyn Iterator<Item = _>> = if reverse {
+        Box::new(channel_hist.iter().rev())
+    } else {
+        Box::new(channel_hist.iter())
+    };
+
+    let mut pixels_count = 0 as f32;
+    let mut candidates: Vec<(u16, f64)> = vec![];
+    for (value, &freq) in hist_iter.enumerate() {
+        pixels_count += freq as f32;
+        let pixels_percentage = pixels_count / pixels_total;
+        if pixels_percentage < cutoff_min {
+            continue;
+        } else if pixels_percentage >= cutoff_min && pixels_percentage <= cutoff_max {
+            if freq > 0 {
+                candidates.push((value as u16, freq as f64));
+            }
+        } else {
             break;
         }
     }
 
-    current_value
-}
-
-pub fn find_cutoff_value_rev(channel_hist: [usize; 65536], cutoff: f32) -> u16 {
-    let mut count = 0 as f32;
-    let mut current_value = 0_u16;
-    let total = channel_hist.iter().sum::<usize>() as f32;
-
-    for (value, &freq) in channel_hist.iter().rev().enumerate() {
-        count += freq as f32;
-        current_value = value as u16;
-        if (count / total) > cutoff {
-            break;
-        }
+    if debug {
+        debug_candidates(&candidates);
     }
 
-    u16::MAX - current_value
+    let minima = find_minima(&candidates);
+
+    if reverse {
+        u16::MAX - minima.unwrap_or(candidates[0].0)
+    } else {
+        minima.unwrap_or(candidates[0].0)
+    }
 }
 
-pub fn stretch_channels_mut(image: &mut InputImage, cutoff: f32) {
+pub fn stretch_channels_mut(image: &mut InputImage, clip_range: (f32, f32), debug: bool) {
     let hist = histogram_rgb(image);
 
-    let min = [
-        find_cutoff_value(hist[0], cutoff) as f32,
-        find_cutoff_value(hist[1], cutoff) as f32,
-        find_cutoff_value(hist[2], cutoff) as f32,
-    ];
-    let max = [
-        find_cutoff_value_rev(hist[0], cutoff) as f32,
-        find_cutoff_value_rev(hist[1], cutoff) as f32,
-        find_cutoff_value_rev(hist[2], cutoff) as f32,
-    ];
+    if debug {
+        debug_histogram(&hist);
+    }
+
+    let min: Vec<f64> = (0..3)
+        .map(|channel| find_cutoff_value(false, hist[channel], clip_range, debug) as f64)
+        .collect();
+
+    let max: Vec<f64> = (0..3)
+        .map(|channel| find_cutoff_value(true, hist[channel], clip_range, debug) as f64)
+        .collect();
 
     image.par_pixels_mut().for_each(|pixel| {
         for (channel, value) in pixel.0.iter_mut().enumerate() {
-            *value = f32::min(
-                u16::MAX as f32,
-                u16::MAX as f32 * ((*value as f32 - min[channel]) / (max[channel] - min[channel])),
+            *value = f64::min(
+                u16::MAX as f64,
+                u16::MAX as f64 * ((*value as f64 - min[channel]) / (max[channel] - min[channel])),
             ) as u16;
         }
     });
+
+    let new_hist = histogram_rgb(image);
+
+    debug_histogram(&new_hist);
+}
+
+fn find_minima(candidates: &Vec<(u16, f64)>) -> Option<u16> {
+    let coeffs = polyfit::estimate(
+        &DVector::from_iterator(candidates.len(), candidates.iter().map(|c| c.0 as f64)),
+        &DVector::from_iterator(candidates.len(), candidates.iter().map(|c| c.1)),
+        5,
+    );
+
+    for i in 2..candidates.len() {
+        let prev = polyfit::evaluate(&coeffs, candidates[i - 2].0 as f64);
+        let curr = polyfit::evaluate(&coeffs, candidates[i - 1].0 as f64);
+        let next = polyfit::evaluate(&coeffs, candidates[i].0 as f64);
+
+        if prev > curr && next > curr {
+            return Some(candidates[i - 1].0);
+        }
+    }
+
+    None
+}
+
+fn debug_histogram(hist: &CumulativeHistogramRgb) {
+    for (channel, channel_hist) in hist.iter().enumerate() {
+        let fname = format!(
+            "{}_{}_hist.txt",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros(),
+            channel
+        );
+        let mut file = std::fs::File::create(fname).unwrap();
+        for (value, &count) in channel_hist.iter().enumerate() {
+            if count > 0 {
+                file.write(format!("{}\t{}\n", value, count).as_bytes())
+                    .unwrap();
+            }
+        }
+    }
+}
+
+fn debug_candidates(candidates: &Vec<(u16, f64)>) {
+    let fname = format!(
+        "{}.txt",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros()
+    );
+
+    let coeffs = polyfit::estimate(
+        &DVector::from_iterator(candidates.len(), candidates.iter().map(|c| c.0 as f64)),
+        &DVector::from_iterator(candidates.len(), candidates.iter().map(|c| c.1)),
+        5,
+    );
+
+    let mut file = std::fs::File::create(fname).unwrap();
+    for &(value, count) in candidates.iter() {
+        let estimate = polyfit::evaluate(&coeffs, value as f64);
+        file.write(format!("{}\t{}\t{}\n", value, count, estimate).as_bytes())
+            .unwrap();
+    }
 }
