@@ -28,8 +28,11 @@ struct Cli {
 
     /// Amount of additional crop after border removal, as a percentage of the original image's width and height
     #[arg(short = 'c', long, default_value_t = 0.01)]
-    crop_percentage: f32,
+    crop: f32,
 
+    /// The percentage of pixels to clip during histogram stretching
+    #[arg(long, default_value_t = 0.00015)]
+    clip: f32,
 
     /// Saves intermediate images during processing
     #[arg(long, default_value_t = false)]
@@ -122,7 +125,7 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
 
     if !args.half_frame {
         let debug_file_path = if args.debug { Some(file) } else { None };
-        let converted = conversion::convert(&image, 1.5, args.crop_percentage, debug_file_path)?;
+        let converted = conversion::convert(&image, 1.5, args.crop, args.clip, debug_file_path)?;
         io::save_image(
             &file,
             &args.output_suffix,
@@ -139,7 +142,7 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
                 None
             };
             let converted =
-                conversion::convert(&image, 0.7083, args.crop_percentage, debug_file_path)?;
+                conversion::convert(&image, 0.7083, args.crop, args.clip, debug_file_path)?;
             io::save_image(
                 &file_half,
                 &args.output_suffix,

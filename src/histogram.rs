@@ -39,57 +39,53 @@ pub fn histogram_rgb(image: &InputImage) -> CumulativeHistogramRgb {
     hist
 }
 
-pub fn find_cutoff_value(channel_hist: [usize; 65536], cutoff: f32) -> u16 {
-    let mut count = 0 as f32;
-    let mut current_value = 0_u16;
-    let total = channel_hist.iter().sum::<usize>() as f32;
+pub fn find_cutoff_value(
+    reverse: bool,
+    channel_hist: [usize; 65536],
+    cutoff: f32,
+) -> u16 {
+    let pixels_total = channel_hist.iter().sum::<usize>() as f32;
 
-    for (value, &freq) in channel_hist.iter().enumerate() {
-        count += freq as f32;
-        current_value = value as u16;
-        if (count / total) > cutoff {
+    let hist_iter: Box<dyn Iterator<Item = _>> = if reverse {
+        Box::new(channel_hist.iter().rev())
+    } else {
+        Box::new(channel_hist.iter())
+    };
+
+    let mut pixels_count = 0 as f32;
+    let mut cutoff_value = None;
+    for (value, &freq) in hist_iter.enumerate() {
+        pixels_count += freq as f32;
+        let pixels_percentage = pixels_count / pixels_total;
+        if pixels_percentage > cutoff {
+            cutoff_value = Some(value as u16);
             break;
         }
     }
 
-    current_value
-}
-
-pub fn find_cutoff_value_rev(channel_hist: [usize; 65536], cutoff: f32) -> u16 {
-    let mut count = 0 as f32;
-    let mut current_value = 0_u16;
-    let total = channel_hist.iter().sum::<usize>() as f32;
-
-    for (value, &freq) in channel_hist.iter().rev().enumerate() {
-        count += freq as f32;
-        current_value = value as u16;
-        if (count / total) > cutoff {
-            break;
-        }
+    if reverse {
+        u16::MAX - cutoff_value.unwrap_or(0)
+    } else {
+        cutoff_value.unwrap_or(0)
     }
-
-    u16::MAX - current_value
 }
 
-pub fn stretch_channels_mut(image: &mut InputImage, cutoff: f32) {
+pub fn stretch_channels_mut(image: &mut InputImage, clip: f32) {
     let hist = histogram_rgb(image);
 
-    let min = [
-        find_cutoff_value(hist[0], cutoff) as f32,
-        find_cutoff_value(hist[1], cutoff) as f32,
-        find_cutoff_value(hist[2], cutoff) as f32,
-    ];
-    let max = [
-        find_cutoff_value_rev(hist[0], cutoff) as f32,
-        find_cutoff_value_rev(hist[1], cutoff) as f32,
-        find_cutoff_value_rev(hist[2], cutoff) as f32,
-    ];
+    let min: Vec<f64> = (0..3)
+        .map(|channel| find_cutoff_value(false, hist[channel], clip) as f64)
+        .collect();
+
+    let max: Vec<f64> = (0..3)
+        .map(|channel| find_cutoff_value(true, hist[channel], clip) as f64)
+        .collect();
 
     image.par_pixels_mut().for_each(|pixel| {
         for (channel, value) in pixel.0.iter_mut().enumerate() {
-            *value = f32::min(
-                u16::MAX as f32,
-                u16::MAX as f32 * ((*value as f32 - min[channel]) / (max[channel] - min[channel])),
+            *value = f64::min(
+                u16::MAX as f64,
+                u16::MAX as f64 * ((*value as f64 - min[channel]) / (max[channel] - min[channel])),
             ) as u16;
         }
     });
