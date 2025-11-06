@@ -155,7 +155,8 @@ fn identify_border(
 
     // 7. find contours
     let contours = find_contours::<u32>(&img);
-    let points: Vec<Point<u32>> = contours
+    // use signed ints, since `min_area_react` may return negative coordinates
+    let points: Vec<Point<i32>> = contours
         .into_iter()
         .filter_map(|contour| {
             if contour.points.len() > 50 {
@@ -165,16 +166,26 @@ fn identify_border(
             }
         })
         .flatten()
+        .map(|p| Point {
+            x: p.x as i32,
+            y: p.y as i32,
+        })
         .collect();
 
-    let corners = min_area_rect(&points);
+    let corners: [Point<i32>; 4] = min_area_rect(&points);
 
-    let min_x = corners.map(|c| c.x).into_iter().min().unwrap();
-    let min_y = corners.map(|c| c.y).into_iter().min().unwrap();
-    let max_x = corners.map(|c| c.x).into_iter().max().unwrap();
-    let max_y = corners.map(|c| c.y).into_iter().max().unwrap();
+    let min_x = corners.map(|c| c.x).into_iter().min().unwrap().max(0) as u32;
+    let min_y = corners.map(|c| c.y).into_iter().min().unwrap().max(0) as u32;
+    let max_x = corners.map(|c| c.x).into_iter().max().unwrap().max(0) as u32;
+    let max_y = corners.map(|c| c.y).into_iter().max().unwrap().max(0) as u32;
 
-    let points = identify_border_points(min_x, min_y, max_x, max_y, &borderless);
+    let points = identify_border_points(
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        &borderless
+    );
 
     let scale_x = |x: u32| (x as f32 * original.width() as f32 / img.width() as f32) as u32;
     let scale_y = |y: u32| (y as f32 * original.height() as f32 / img.height() as f32) as u32;
