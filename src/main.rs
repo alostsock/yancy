@@ -19,6 +19,10 @@ struct Cli {
     #[arg(long, default_value = "positive")]
     output_suffix: String,
 
+    /// Output directory suffix
+    #[arg(long)]
+    output_dir_suffix: Option<String>,
+
     /// Splits input file(s) in half vertically before processing
     #[arg(long, default_value_t = false)]
     half_frame: bool,
@@ -54,6 +58,7 @@ enum OutputFormat {
     Jpeg,
     Webp,
     Tiff,
+    Avif,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -63,6 +68,7 @@ impl std::fmt::Display for OutputFormat {
             Self::Jpeg => write!(f, "jpeg"),
             Self::Webp => write!(f, "webp"),
             Self::Tiff => write!(f, "tiff"),
+            Self::Avif => write!(f, "avif"),
         }
     }
 }
@@ -105,10 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Converting file {}...", file);
+fn process_file(path: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Converting file {}...", path);
 
-    let mut image = raw_processor::load_raw_image(&file)?;
+    let mut image = raw_processor::load_raw_image(&path)?;
     image.set_color_space(Cicp::SRGB_LINEAR)?;
     image.apply_color_space(Cicp::SRGB, ConvertColorOptions::default())?;
 
@@ -118,16 +124,28 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
             image.width(),
             image.height()
         );
-
-        io::save_image(&file, "original", "jpeg", image.clone())?;
+        io::save_image(
+            &path,
+            &args.output_dir_suffix,
+            "original",
+            "jpeg",
+            image.clone(),
+        )?;
     }
 
     if !args.half_frame {
         let aspect_ratio = args.aspect_ratio.unwrap_or(1.5);
-        let debug_file_path = if args.debug { Some(file) } else { None };
-        let converted = conversion::convert(&image, aspect_ratio, args.crop, debug_file_path)?;
+        let debug_file_path = if args.debug { Some(path) } else { None };
+        let converted = conversion::convert(
+            &image,
+            aspect_ratio,
+            args.crop,
+            debug_file_path,
+            &args.output_dir_suffix,
+        )?;
         io::save_image(
-            &file,
+            &path,
+            &args.output_dir_suffix,
             &args.output_suffix,
             &args.output_format.to_string(),
             converted,
@@ -137,15 +155,22 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
 
         for (image, half_suffix) in halves.into_iter().zip('a'..='b') {
             let aspect_ratio = args.aspect_ratio.unwrap_or(0.7083);
-            let file_half = format!("{}.{}", file, half_suffix);
+            let file_half = format!("{}.{}", path, half_suffix);
             let debug_path = if args.debug {
                 Some(file_half.as_str())
             } else {
                 None
             };
-            let converted = conversion::convert(&image, aspect_ratio, args.crop, debug_path)?;
+            let converted = conversion::convert(
+                &image,
+                aspect_ratio,
+                args.crop,
+                debug_path,
+                &args.output_dir_suffix,
+            )?;
             io::save_image(
                 &file_half,
+                &args.output_dir_suffix,
                 &args.output_suffix,
                 &args.output_format.to_string(),
                 converted,

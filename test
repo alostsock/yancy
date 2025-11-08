@@ -1,11 +1,8 @@
 #! /bin/bash
-rm examples/*.jpeg
-rm examples/*.png
-rm examples/*.tiff
-rm *.txt
-cargo run --release -- --debug --output-format jpeg -f \
+rm -rf examples_positives
+cargo run --release -- --debug --output-format jpeg --output-dir-suffix positives -f \
   examples/P9291284.ORF examples/PA071418.ORF examples/PA201627.ORF \
   examples/PA201642.ORF examples/PB061899.ORF examples/PB061896.ORF \
   examples/PB061897.ORF examples/PB061898.ORF examples/PB061914.ORF
-cargo run --release -- --debug --output-format jpeg --half-frame -f \
+cargo run --release -- --debug --output-format jpeg --output-dir-suffix positives --half-frame -f \
   examples/P9261242.ORF examples/P9301342.ORF

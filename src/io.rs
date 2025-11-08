@@ -8,7 +8,8 @@ use image::{DynamicImage, EncodableLayout, ImageBuffer, ImageError, Pixel, Pixel
 
 pub fn save_image<'a, P, Container>(
     path: &str,
-    suffix: &str,
+    dir_suffix: &Option<String>,
+    file_suffix: &str,
     extension: &str,
     image: ImageBuffer<P, Container>,
 ) -> Result<(), ImageError>
@@ -18,7 +19,28 @@ where
     Container: Deref<Target = [P::Subpixel]>,
     ImageBuffer<P, Container>: Into<DynamicImage>,
 {
-    let output_path = format!("{}.{}.{}", path, suffix, extension);
+    let output_path = if let Some(dir_suffix) = dir_suffix {
+        let current_path = Path::new(path);
+        let filename = current_path.file_name().unwrap().to_str().unwrap();
+        match current_path.parent() {
+            Some(parent) => {
+                let mut dir = parent.to_owned();
+                dir.as_mut_os_string().push(format!("_{}", dir_suffix));
+                std::fs::create_dir_all(&dir)?;
+                dir.push(filename);
+                dir.to_str().unwrap().to_owned()
+            }
+            None => {
+                let new_path: PathBuf = [dir_suffix, filename].iter().collect();
+                std::fs::create_dir_all(&dir_suffix)?;
+                new_path.to_str().unwrap().to_owned()
+            }
+        }
+    } else {
+        path.to_owned()
+    };
+
+    let output_path = format!("{}.{}.{}", output_path, file_suffix, extension);
 
     if image.save(&output_path).is_ok() {
         println!("Saved {}", output_path);
@@ -57,11 +79,10 @@ pub fn has_raw_file_extension(path: &Path) -> bool {
         && let Some(ext) = path.extension()
     {
         [
-            "3fr", "ari", "arw", "bay", "braw", "cap", "cr2", "cr3", "cri", "crw",
-            "dcr", "dcs", "dng", "dng", "drf", "eip", "erf", "fff", "gpr", "iiq", "jxs",
-            "k25", "kdc", "mdc", "mef", "mos", "mrw", "nef", "nrw", "orf", "pef", "ptx",
-            "pxn", "r3d", "raf", "raw", "raw", "rw2", "rwl", "rwz", "sr2", "srf", "srw",
-            "tco", "x3f",
+            "3fr", "ari", "arw", "bay", "braw", "cap", "cr2", "cr3", "cri", "crw", "dcr", "dcs",
+            "dng", "dng", "drf", "eip", "erf", "fff", "gpr", "iiq", "jxs", "k25", "kdc", "mdc",
+            "mef", "mos", "mrw", "nef", "nrw", "orf", "pef", "ptx", "pxn", "r3d", "raf", "raw",
+            "raw", "rw2", "rwl", "rwz", "sr2", "srf", "srw", "tco", "x3f",
         ]
         .contains(
             &ext.to_ascii_lowercase()

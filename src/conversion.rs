@@ -31,11 +31,12 @@ pub fn convert(
     aspect_ratio: f32,
     crop_percentage: f32,
     debug_file_path: Option<&str>,
+    debug_dir_suffix: &Option<String>,
 ) -> Result<InputImage, ImageError> {
     let Border {
         bounds,
         points: border_points,
-    } = identify_border(&original, debug_file_path)?;
+    } = identify_border(&original, debug_file_path, debug_dir_suffix)?;
 
     let (min_x, min_y, max_x, max_y) =
         determine_crop_inset_bounds(original, bounds, aspect_ratio, crop_percentage);
@@ -60,7 +61,7 @@ pub fn convert(
             draw_filled_circle_mut(&mut img, (x as i32, y as i32), 10, Rgb([u16::MAX, 0, 0]));
         }
 
-        io::save_image(path, "border", "jpeg", img)?;
+        io::save_image(path, &debug_dir_suffix, "border", "jpeg", img)?;
     }
 
     let border_colors: Vec<&Rgb<u16>> = border_points
@@ -81,7 +82,7 @@ pub fn convert(
     invert_mut(&mut output);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "inverted", "jpeg", output.clone())?;
+        io::save_image(path, &debug_dir_suffix, "inverted", "jpeg", output.clone())?;
     }
 
     stretch_channels_mut(&mut output);
@@ -92,6 +93,7 @@ pub fn convert(
 fn identify_border(
     original: &InputImage,
     debug_file_path: Option<&str>,
+    debug_dir_suffix: &Option<String>,
 ) -> Result<Border, ImageError> {
     let mut img: DynamicImage = original.clone().into();
 
@@ -107,7 +109,7 @@ fn identify_border(
     normalize_histogram_mut(&mut img);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "grayscale", "jpeg", img.clone())?;
+        io::save_image(path, &debug_dir_suffix, "grayscale", "jpeg", img.clone())?;
     }
 
     // 2. zero out any black borders or light from sprocket holes
@@ -124,7 +126,13 @@ fn identify_border(
     normalize_histogram_mut(&mut img);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "pre-border-removal", "jpeg", img.clone())?;
+        io::save_image(
+            path,
+            &debug_dir_suffix,
+            "pre-border-removal",
+            "jpeg",
+            img.clone(),
+        )?;
     }
 
     // 4. change the values from step (2) to white, in preparation for edge
@@ -143,14 +151,20 @@ fn identify_border(
     img = contrast(&borderless, -20.0);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "borderless", "jpeg", borderless.clone())?;
+        io::save_image(
+            path,
+            &debug_dir_suffix,
+            "borderless",
+            "jpeg",
+            borderless.clone(),
+        )?;
     }
 
     // 6. find edges
     img = canny(&img, 1.0, 50.0);
 
     if let Some(path) = debug_file_path {
-        io::save_image(path, "edges", "jpeg", img.clone())?;
+        io::save_image(path, &debug_dir_suffix, "edges", "jpeg", img.clone())?;
     }
 
     // 7. find contours
