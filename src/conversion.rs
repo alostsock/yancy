@@ -30,7 +30,6 @@ pub fn convert(
     original: &InputImage,
     aspect_ratio: f32,
     crop_percentage: f32,
-    clip_percentage: f32,
     debug_file_path: Option<&str>,
 ) -> Result<InputImage, ImageError> {
     let Border {
@@ -85,7 +84,7 @@ pub fn convert(
         io::save_image(path, "inverted", "jpeg", output.clone())?;
     }
 
-    stretch_channels_mut(&mut output, clip_percentage);
+    stretch_channels_mut(&mut output);
 
     Ok(output)
 }
@@ -141,12 +140,13 @@ fn identify_border(
     // 5. remove any specks of black remaining from step (2)
     let borderless = median_filter(&img, 1, 1);
 
+    img = contrast(&borderless, -20.0);
+
     if let Some(path) = debug_file_path {
         io::save_image(path, "borderless", "jpeg", borderless.clone())?;
     }
 
     // 6. find edges
-    img = contrast(&borderless, 50.0);
     img = canny(&img, 1.0, 50.0);
 
     if let Some(path) = debug_file_path {
@@ -179,13 +179,7 @@ fn identify_border(
     let max_x = corners.map(|c| c.x).into_iter().max().unwrap().max(0) as u32;
     let max_y = corners.map(|c| c.y).into_iter().max().unwrap().max(0) as u32;
 
-    let points = identify_border_points(
-        min_x,
-        min_y,
-        max_x,
-        max_y,
-        &borderless
-    );
+    let points = identify_border_points(min_x, min_y, max_x, max_y, &borderless);
 
     let scale_x = |x: u32| (x as f32 * original.width() as f32 / img.width() as f32) as u32;
     let scale_y = |y: u32| (y as f32 * original.height() as f32 / img.height() as f32) as u32;

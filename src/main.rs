@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use clap::{Args, Parser, ValueEnum};
+use image::{ConvertColorOptions, metadata::Cicp};
 use yancy::{conversion, io, raw_processor};
 
 /// yet another negative conversion thingy
@@ -29,10 +30,6 @@ struct Cli {
     /// Amount of additional crop after border removal, as a percentage of the original image's width and height
     #[arg(short = 'c', long, default_value_t = 0.01)]
     crop: f32,
-
-    /// The percentage of pixels to clip during histogram stretching
-    #[arg(long, default_value_t = 0.00015)]
-    clip: f32,
 
     /// Saves intermediate images during processing
     #[arg(long, default_value_t = false)]
@@ -111,7 +108,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     println!("Converting file {}...", file);
 
-    let image = raw_processor::load_raw_image(&file)?;
+    let mut image = raw_processor::load_raw_image(&file)?;
+    image.set_color_space(Cicp::SRGB_LINEAR)?;
+    image.apply_color_space(Cicp::SRGB, ConvertColorOptions::default())?;
 
     if args.debug {
         println!(
@@ -124,8 +123,9 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
     }
 
     if !args.half_frame {
+        let aspect_ratio = args.aspect_ratio.unwrap_or(1.5);
         let debug_file_path = if args.debug { Some(file) } else { None };
-        let converted = conversion::convert(&image, 1.5, args.crop, args.clip, debug_file_path)?;
+        let converted = conversion::convert(&image, aspect_ratio, args.crop, debug_file_path)?;
         io::save_image(
             &file,
             &args.output_suffix,
@@ -134,15 +134,16 @@ fn process_file(file: &str, args: &Cli) -> Result<(), Box<dyn std::error::Error>
         )?;
     } else {
         let halves = conversion::split_image(image);
+
         for (image, half_suffix) in halves.into_iter().zip('a'..='b') {
+            let aspect_ratio = args.aspect_ratio.unwrap_or(0.7083);
             let file_half = format!("{}.{}", file, half_suffix);
-            let debug_file_path = if args.debug {
+            let debug_path = if args.debug {
                 Some(file_half.as_str())
             } else {
                 None
             };
-            let converted =
-                conversion::convert(&image, 0.7083, args.crop, args.clip, debug_file_path)?;
+            let converted = conversion::convert(&image, aspect_ratio, args.crop, debug_path)?;
             io::save_image(
                 &file_half,
                 &args.output_suffix,

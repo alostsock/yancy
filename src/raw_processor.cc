@@ -20,12 +20,12 @@ void RawProcessor::open_and_process(rust::String path) {
     #define OUT processor.imgdata.params
 
     OUT.output_bps = 16;
-    OUT.gamm[0] = 1/2.4;
-    OUT.gamm[1] = 12.92;
+    OUT.gamm[0] = 1.0;
+    OUT.gamm[1] = 1.0;
     OUT.use_camera_wb = 1;
     OUT.use_camera_matrix = 1;
     OUT.no_auto_bright = 1;
-    OUT.adjust_maximum_thr = 0.6;
+    OUT.adjust_maximum_thr = 0.0;
 
     int ret = processor.open_file(path.c_str());
     if (ret != LIBRAW_SUCCESS) {
